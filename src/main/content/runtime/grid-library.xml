@@ -4,6 +4,6 @@
   <grid-library-version>1.0</grid-library-version>
      <dependency>
        <grid-library-name>${project.artifactId}-distribution</grid-library-name>
-       <grid-library-version>${distribution.version}</grid-library-version>
+       <grid-library-version>${enabler.version}</grid-library-version>
    </dependency>
 </grid-library>	

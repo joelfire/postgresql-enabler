@@ -24,99 +24,70 @@ def prepareWorkDirectory():
     proxy.prepareWorkDirectory()
   
 def doInit(additionalVariables):
-    # create the data, tmp, and mysqld directories
-    workdir = runtimeContext.getVariable('CONTAINER_WORK_DIR').getValue() 
-    datadir = runtimeContext.getVariable('MYSQL_DATA_DIR').getValue()
-    logInfo("Creating data, tmp, and mysqdd directories in " + workdir)
-    if (not os.path.exists(datadir)) :
-        os.mkdir(datadir)
-    os.mkdir(os.path.join(workdir, "mysqld") )
-    os.mkdir(os.path.join(workdir, "tmp") )
-    proxy.doInit(additionalVariables)
-
+    logInfo("--------------------doInit------------------------------")
+    datadir = runtimeContext.getVariable('PGSQL_DATA_DIR').getValue()
+    basedir = runtimeContext.getVariable('PGSQL_BASE_DIR').getValue() 
+    
+    logInfo("/usr/sbin/useradd postgres")
+    call(["/usr/sbin/useradd","postgres"])
+    
+    logInfo("chown dirs to postgres")
+    call(['chown','-R','postgres', basedir]);
+    
 def doStart():
-    workdir = runtimeContext.getVariable('CONTAINER_WORK_DIR').getValue() 
-    basedir = runtimeContext.getVariable('MYSQL_BASE_DIR').getValue() 
-    datadir = runtimeContext.getVariable('MYSQL_DATA_DIR').getValue()
-    port = runtimeContext.getVariable('MYSQL_PORT').getValue() 
-    user = runtimeContext.getVariable('MYSQL_USER').getValue()
-    pw = runtimeContext.getVariable('MYSQL_PW').getValue()
-    msgdir = runtimeContext.getVariable('MYSQL_LANG_MESSAGES_DIR').getValue()
-    lang = runtimeContext.getVariable('MYSQL_LANGUAGE').getValue()
-    socket = runtimeContext.getVariable('MYSQL_SOCKET').getValue()
-    bindir = os.path.join(basedir, "bin")
-    scriptdir = os.path.join(basedir, "scripts")
-    
-    logInfo("Initializing MySQL database " + os.path.join(workdir, "data"))
-    call(["chmod", "-fR", "+x", bindir])
-    call(["chmod", "-fR", "+x", scriptdir])
-    
-    scriptname="mysql_install_db"
-    if (platform.system() == "Windows"):
-        scriptname+=".pl"
-    call([os.path.join(scriptdir, scriptname), "--basedir=" + basedir, "--datadir=" + datadir])
-    
-    logInfo("Running mysqld")
-    Popen([os.path.join(bindir, "mysqld"), "--socket=" + socket, "--datadir=" + datadir, "--lc-messages-dir=" + msgdir, "--lc-messages=" + lang, "--pid-file=" + os.path.join(workdir, "mysqld", "mysqld.pid")])
-    time.sleep(20)
-    
-    logInfo("Setting local password")
-    call([os.path.join(bindir, "mysqladmin"), "--socket=" + socket, "-u", user, "password", pw])
-    
-    host = socket.gethostname()
-    logInfo("Setting network password")
-    call([os.path.join(bindir, "mysqladmin"), "--port=" + port, "-h", host, "-u", user, "password", pw])
+    logInfo("--------------------doStart------------------------------")
+    basedir = runtimeContext.getVariable('PGSQL_BASE_DIR').getValue() 
+    datadir = runtimeContext.getVariable('PGSQL_DATA_DIR').getValue()
+    if (not os.path.exists(datadir)) :
+        logInfo("Data dir does not exist, creating and initializing: " + datadir)
+        os.makedirs(datadir)
+        call(['chown','-R','postgres', datadir]);
+        command = os.path.join(basedir, "bin")
+        command = os.path.join(command, 'initdb')
+        command = command + ' -D ' + datadir
+        callAsUser(command)
+    else : 
+        logInfo("Data directory already exists: " + datadir);
+
+    callPgCtl('start')
    
 def doInstall(info):
-    archiveinfo = features.get("Archive Support")
-    enginedir = runtimeContext.getVariable('ENGINE_WORK_DIR').getValue()
-    workdir = runtimeContext.getVariable('CONTAINER_WORK_DIR').getValue()
-    basedir = runtimeContext.getVariable('MYSQL_BASE_DIR').getValue() 
-    user = runtimeContext.getVariable('MYSQL_USER').getValue()
-    pw = runtimeContext.getVariable('MYSQL_PW').getValue()
-    socket = runtimeContext.getVariable('MYSQL_SOCKET').getValue()
-    tmpdir = os.path.join(workdir, "tmp") 
-    bindir = os.path.join(basedir, "bin")
-    if archiveinfo:
-        for i in range(archiveinfo.getArchiveCount()):
-            archive = archiveinfo.getArchiveInfo(i)
-            archname = archive.getArchiveFilename()
-            logInfo("Installing archive " + archive.getArchiveFilename())
-            if (fnmatch.fnmatch(archname, "*.sql.zip")):
-                sqlfile = archname.rsplit(".", 1)[0]
-                database = sqlfile.rsplit(".", 1)[0]
-                call(["unzip", "-d", tmpdir, os.path.join(enginedir, archiveinfo.getArchiveDirectory(), archname)])     
-                call([os.path.join(bindir, "mysqladmin"), "--socket=" + socket, "--user=" + user, "--password="+pw, "create", database])
-                call([os.path.join(bindir, "mysql"), "--user=" + user, "--password=" + pw, "--socket=" + socket, database], stdin=open(os.path.join(tmpdir, sqlfile), "r"))
+    logInfo("--------------------doInstall------------------------------")
 
 def doUninstall():
-    print "doUninstall"    
+    logInfo("--------------------doUninstall------------------------------")
  
 def doShutdown():
-    workdir = runtimeContext.getVariable('CONTAINER_WORK_DIR').getValue()
-    port = runtimeContext.getVariable('MYSQL_PORT').getValue() 
-    pidfile = open(os.path.join(workdir, "mysqld", "mysqld.pid"), "r")
-    pids = pidfile.readlines()
-    pidfile.close()
-    os.kill(int(pids[0]), 15)
+    logInfo("--------------------doShutdown------------------------------")
+    callPgCtl('stop')
     
 # running condition
 def getContainerRunningConditionPollPeriod():
     return 5000
 
 def isContainerRunning():
-    port = runtimeContext.getVariable('MYSQL_PORT').getValue() 
-    basedir = runtimeContext.getVariable('MYSQL_BASE_DIR').getValue()
-    user = runtimeContext.getVariable('MYSQL_USER').getValue()
-    pw = runtimeContext.getVariable('MYSQL_PW').getValue() 
-    bindir = os.path.join(basedir, "bin")
-    host = socket.gethostname()
-    status = call([os.path.join(bindir, "mysqladmin"), "--port=" + port, "-h", host, "--user=" + user, "--password=" + pw, "ping"])
-    ContainerUtils.getLogger(proxy).info("mysqladmin ping returns " + str(status))
+    status = callPgCtl('status')
     if status == 0:
         return True
     else:
-        return False
-#    
+        return False 
+    
 def getComponentRunningConditionErrorMessage():
-    return "mysqladmin ping failure"
+    return "pg_ctl status returned nonzero"
+
+def callPgCtl(cmd):
+    basedir = runtimeContext.getVariable('PGSQL_BASE_DIR').getValue() 
+    datadir = runtimeContext.getVariable('PGSQL_DATA_DIR').getValue()
+    command = os.path.join(basedir, "bin")
+    command = os.path.join(command, 'pg_ctl')
+    command = command + ' -D ' + datadir + ' ' + cmd 
+    return callAsUser(command)
+    
+    
+def callAsUser(command):
+    logInfo('Executing command: ' + command)
+    return call(['su','-c',command,'postgres'])
+    logInfo('Command finished')
+    
+    
+

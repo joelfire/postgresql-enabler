@@ -1,3 +1,4 @@
+<!-- maven does not have a straightforward way to unpack an archive that is not a dependency -->
 <project name="unpack">
 
     <target name="unpack">
@@ -27,9 +28,10 @@
     
     <target name="targz" if="targz" >
         <mkdir dir="${target}"/>
-        <gunzip src="${source}" dest="${target}"/>
-        
-        <basename property="tarfile" file="${source}" suffix=".gz"/>
-        <untar src="${target}/${tarfile}" dest="${target}"/>
+    	<!-- use cmd line because ant doesn't handle symlinks (they are 0 bytes)-->
+    	<exec executable="tar" dir="${target}">
+    		<arg value="xvfz"/>
+    		<arg value="${source}"/>
+    	</exec>
     </target>
 </project>
