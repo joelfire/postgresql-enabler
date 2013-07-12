@@ -1,3 +1,20 @@
+<!-- First, create a pom.properties file to set your Broker location and distribution archive, e.g.:
+
+broker.home=/opt/TIBCO/fabric/
+distribution.archive=/home/me/Downloads/postgresql-9.2.4-1-linux-x64-binaries.tar.gz	 
+
+-->
+
+<!-- 
+	Usage: 
+	mvn [goal] 			// acts on the enabler only
+	mvn -Ddist [goal] 	// acts on the enabler and the distribution 
+	
+	Goals: test: creates the expanded gridlib(s), suitable for Engine Test 
+	package: creates the gridlib(s) 
+	install: creates and copies the gridlib(s) to your Broker. 
+-->
+
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
@@ -8,37 +25,114 @@
 	<version>1.0-SNAPSHOT</version>
 	<description></description>
 	<properties>
+		<test.gridlib.dir>${project.build.directory}/gridlib</test.gridlib.dir>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<distribution.type>tar.gz</distribution.type>
-		<enabler.os>linux64</enabler.os>
-		<enabler.version>9.2.4</enabler.version>
-		<distribution.os>linux-x64</distribution.os>
-		<distribution.version>9.2.4-1</distribution.version>
-		<distribution.basename>postgresql-${distribution.version}-${distribution.os}-binaries</distribution.basename>
+		<distribution.os>linux64</distribution.os>
+		<distribution.version>9.2.4</distribution.version>
+		<distibution.gridlib.name>${project.artifactId}-${distribution.os}-${distribution.version}-distribution-gridlib</distibution.gridlib.name>
+		<enabler.gridlib.name>${project.artifactId}-${project.version}-enabler-gridlib</enabler.gridlib.name>
 	</properties>
 	<build>
 		<plugins>
 			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>properties-maven-plugin</artifactId>
+				<version>1.0-alpha-2</version>
+				<executions>
+					<!-- read properties for broker.home and distribution.archive -->
+					<execution>
+						<phase>initialize</phase>
+						<goals>
+							<goal>read-project-properties</goal>
+						</goals>
+						<configuration>
+							<files>
+								<file>pom.properties</file>
+							</files>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-resources-plugin</artifactId>
+				<version>2.6</version>
+				<executions>
+					<!-- copy the enabler files to the test gridlib dir -->
+					<execution>
+						<id>copy-enabler</id>
+						<phase>process-resources</phase>
+						<goals>
+							<goal>copy-resources</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${test.gridlib.dir}/${enabler.gridlib.name}/</outputDirectory>
+							<resources>
+								<resource>
+									<directory>src/main/content/runtime</directory>
+									<filtering>true</filtering>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+					<!-- copy the enabler gridlib to your Broker -->
+					<execution>
+						<id>copy-enabler-gridlib</id>
+						<phase>install</phase>
+						<goals>
+							<goal>copy-resources</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${broker.home}/webapps/livecluster/deploy/resources/gridlib/</outputDirectory>
+							<resources>
+								<resource>
+									<directory>${project.build.directory}</directory>
+									<includes>
+										<include>${enabler.gridlib.name}.tar.gz</include>
+									</includes>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
 				<artifactId>maven-assembly-plugin</artifactId>
 				<version>2.4</version>
 				<executions>
+					<!-- create the enabler gridlib from your test dir -->
 					<execution>
 						<id>runtime</id>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
 						<configuration>
 							<appendAssemblyId>false</appendAssemblyId>
-							<finalName>${project.artifactId}-${project.version}-enabler-gridlib</finalName>
+							<finalName>${enabler.gridlib.name}</finalName>
 							<descriptors>
 								<descriptor>src/main/assembly/runtime.xml</descriptor>
 							</descriptors>
 							<attach>true</attach>
 							<appendAssemblyId>false</appendAssemblyId>
 						</configuration>
-						<phase>package</phase>
-						<goals>
-							<goal>single</goal>
-						</goals>
 					</execution>
 				</executions>
+			</plugin>
+			<!-- since these are not artifacts deployed to a maven repo, disable these -->
+			<plugin>
+				<artifactId>maven-install-plugin</artifactId>
+				<version>2.4</version>
+				<configuration>
+					<skip>true</skip>
+				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-deploy-plugin</artifactId>
+				<version>2.7</version>
+				<configuration>
+					<skip>true</skip>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>
@@ -46,7 +140,7 @@
 		<profile>
 			<activation>
 				<property>
-					<name>distribution.location</name>
+					<name>dist</name>
 				</property>
 			</activation>
 			<build>
@@ -55,6 +149,7 @@
 						<artifactId>maven-antrun-plugin</artifactId>
 						<version>1.7</version>
 						<executions>
+							<!-- untar the distibution archive -->
 							<execution>
 								<id>unpack-distribution</id>
 								<phase>process-resources</phase>
@@ -64,11 +159,56 @@
 								<configuration>
 									<tasks>
 										<ant target="unpack" inheritRefs="true">
-											<property name="source"
-												value="${distribution.location}/${distribution.basename}.${distribution.type}" />
-											<property name="target" value="${project.build.directory}" />
+											<property name="source" value="${distribution.archive}" />
+											<property name="target"
+												value="${test.gridlib.dir}/${distibution.gridlib.name}" />
 										</ant>
+										<delete file="${test.gridlib.dir}/${distibution.gridlib.name}/pgsql/lib/libtermcap.so"/>	
 									</tasks>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-resources-plugin</artifactId>
+						<version>2.6</version>
+						<executions>
+							<!-- copy the distribution files to the test gridlib dir -->
+							<execution>
+								<id>copy-distribution</id>
+								<phase>process-resources</phase>
+								<goals>
+									<goal>copy-resources</goal>
+								</goals>
+								<inherited>false</inherited>
+								<configuration>
+									<outputDirectory>${test.gridlib.dir}/${distibution.gridlib.name}/</outputDirectory>
+									<resources>
+										<resource>
+											<directory>src/main/content/distribution</directory>
+											<filtering>true</filtering>
+										</resource>
+									</resources>
+								</configuration>
+							</execution>
+							<!-- copy the distribution gridlib to your Broker -->
+							<execution>
+								<id>copy-distribution-gridlib</id>
+								<phase>install</phase>
+								<goals>
+									<goal>copy-resources</goal>
+								</goals>
+								<configuration>
+									<outputDirectory>${broker.home}/webapps/livecluster/deploy/resources/gridlib/</outputDirectory>
+									<resources>
+										<resource>
+											<directory>${project.build.directory}</directory>
+											<includes>
+												<include>${distibution.gridlib.name}.tar.gz</include>
+											</includes>
+										</resource>
+									</resources>
 								</configuration>
 							</execution>
 						</executions>
@@ -77,11 +217,12 @@
 						<artifactId>maven-assembly-plugin</artifactId>
 						<version>2.4</version>
 						<executions>
+							<!-- create the enabler gridlib from your gridlib dir -->
 							<execution>
 								<id>distribution</id>
 								<configuration>
 									<appendAssemblyId>false</appendAssemblyId>
-									<finalName>${project.artifactId}-${enabler.os}-${enabler.version}-distribution-gridlib</finalName>
+									<finalName>${distibution.gridlib.name}</finalName>
 									<descriptors>
 										<descriptor>src/main/assembly/distribution.xml</descriptor>
 									</descriptors>

@@ -7,21 +7,8 @@
     </formats>
     <fileSets>
         <fileSet>
-            <directory>src/main/content/runtime</directory>
+            <directory>${test.gridlib.dir}/${enabler.gridlib.name}</directory>
             <outputDirectory/>
-            <excludes>
-                <exclude>container.xml</exclude>
-                <exclude>grid-library.xml</exclude>
-            </excludes>
-        </fileSet>
-        <fileSet>
-            <directory>src/main/content/runtime</directory>
-            <outputDirectory/>
-            <filtered>true</filtered>
-            <includes>
-                <include>container.xml</include>
-                <include>grid-library.xml</include>
-            </includes>
         </fileSet>
     </fileSets>
 </assembly>

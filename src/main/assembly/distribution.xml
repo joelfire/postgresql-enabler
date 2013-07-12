@@ -7,20 +7,8 @@
     </formats>
     <fileSets>
         <fileSet>
-            <directory>src/main/content/distribution</directory>
+            <directory>${test.gridlib.dir}/${distibution.gridlib.name}</directory>
             <outputDirectory/>
-            <filtered>true</filtered>
-            <includes>
-                <include>grid-library.xml</include>
-            </includes>
-        </fileSet>
-        <fileSet>
-            <directory>${project.build.directory}/pgsql</directory>
-            <outputDirectory>${project.artifactId}</outputDirectory>
-            <filtered>false</filtered>
-            <includes>
-                <include>**/*</include>
-            </includes>
         </fileSet>
     </fileSets>
 </assembly>

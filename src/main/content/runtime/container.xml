@@ -57,7 +57,7 @@
         </variable>
         <variable class="com.datasynapse.fabric.common.RuntimeContextVariable">
             <property name="name" value="PGSQL_BASE_DIR"/>
-            <property name="value" value="${CONTAINER_WORK_DIR}/postgresql"/>
+            <property name="value" value="${CONTAINER_WORK_DIR}/pgsql"/>
             <property name="description" value="Path where PostgreSQL resides after installation"/>
         </variable>
         <variable class="com.datasynapse.fabric.common.RuntimeContextVariable">
