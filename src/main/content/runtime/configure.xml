@@ -1,7 +1,5 @@
 <containerConfig>
-  <!-- 
-  <configFiles baseDir="." include="postgresql.conf">
-    <velocity enabled="true"/>
-  </configFiles>
-   -->
+    <configFiles baseDir='${CONTAINER_WORK_DIR}' include='postgresql.conf'>
+        <velocity/>
+    </configFiles>
 </containerConfig>

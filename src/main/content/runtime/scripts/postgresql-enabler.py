@@ -15,41 +15,61 @@ import platform
 import time
 import socket
 import fnmatch
+import shutil
 
-# writes the message in the engine log
-def logInfo(msg):
-  logger.info(msg)
+#
+# This is an example enabler script using Jython 2.5
+# 
+# This application assumes the following
+#   * It has a seperate data directory that can persist after the enabler shuts down. For example, on an NFS share
+#   * It has a control binary in the bin directory that has 'start', 'stop', 'status' commands 
+#   * The Engine runs as 'root', but the application runs as the RUNAS_USER.
+#
+
 
 def prepareWorkDirectory():
     proxy.prepareWorkDirectory()
   
 def doInit(additionalVariables):
     logInfo("--------------------doInit------------------------------")
-    datadir = runtimeContext.getVariable('PGSQL_DATA_DIR').getValue()
-    basedir = runtimeContext.getVariable('PGSQL_BASE_DIR').getValue() 
+    workdir = runtimeContext.getVariable('CONTAINER_WORK_DIR').getValue()
+    datadir = runtimeContext.getVariable('APP_DATA_DIR').getValue()
+    basedir = runtimeContext.getVariable('APP_BASE_DIR').getValue() 
+    runasuser = runtimeContext.getVariable('RUNAS_USER').getValue() 
+  
+    # Now add the user if not already there  
+    logInfo("/usr/sbin/useradd " + runasuser)
+    call(["/usr/sbin/useradd",runasuser])
     
-    logInfo("/usr/sbin/useradd postgres")
-    call(["/usr/sbin/useradd","postgres"])
-    
-    logInfo("chown dirs to postgres")
-    call(['chown','-R','postgres', basedir]);
+    # And change the owner
+    logInfo("chown dirs to " + runasuser)
+    call(['chown','-R',runasuser, basedir]);
     
 def doStart():
     logInfo("--------------------doStart------------------------------")
-    basedir = runtimeContext.getVariable('PGSQL_BASE_DIR').getValue() 
-    datadir = runtimeContext.getVariable('PGSQL_DATA_DIR').getValue()
+    basedir = runtimeContext.getVariable('APP_BASE_DIR').getValue() 
+    datadir = runtimeContext.getVariable('APP_DATA_DIR').getValue()
+    runasuser = runtimeContext.getVariable('RUNAS_USER').getValue() 
     if (not os.path.exists(datadir)) :
         logInfo("Data dir does not exist, creating and initializing: " + datadir)
         os.makedirs(datadir)
-        call(['chown','-R','postgres', datadir]);
+        call(['chown','-R',runasuser, datadir]);
         command = os.path.join(basedir, "bin")
         command = os.path.join(command, 'initdb')
         command = command + ' -D ' + datadir
-        callAsUser(command)
+        callAsUser(command, runasuser)
     else : 
         logInfo("Data directory already exists: " + datadir);
 
-    callPgCtl('start')
+    workdir = runtimeContext.getVariable('CONTAINER_WORK_DIR').getValue()
+    for file in os.listdir(workdir):
+        if file.endswith('.conf'):
+            src = os.path.join(workdir, file);
+            dst = os.path.join(datadir, file);
+            logInfo('Copying ' + src + ' to ' + dst)
+            shutil.copyfile(src, dst)
+            
+    callControlCommand('start', basedir, datadir, runasuser)
    
 def doInstall(info):
     logInfo("--------------------doInstall------------------------------")
@@ -59,35 +79,43 @@ def doUninstall():
  
 def doShutdown():
     logInfo("--------------------doShutdown------------------------------")
-    callPgCtl('stop')
+    basedir = runtimeContext.getVariable('APP_BASE_DIR').getValue() 
+    datadir = runtimeContext.getVariable('APP_DATA_DIR').getValue()
+    runasuser = runtimeContext.getVariable('RUNAS_USER').getValue() 
+    callControlCommand('stop', basedir, datadir, runasuser)
     
 # running condition
 def getContainerRunningConditionPollPeriod():
     return 5000
 
 def isContainerRunning():
-    status = callPgCtl('status')
+    basedir = runtimeContext.getVariable('APP_BASE_DIR').getValue() 
+    datadir = runtimeContext.getVariable('APP_DATA_DIR').getValue()
+    runasuser = runtimeContext.getVariable('RUNAS_USER').getValue() 
+    status = callControlCommand('status', basedir, datadir, runasuser)
     if status == 0:
         return True
     else:
         return False 
     
 def getComponentRunningConditionErrorMessage():
-    return "pg_ctl status returned nonzero"
+    return "status returned nonzero"
 
-def callPgCtl(cmd):
-    basedir = runtimeContext.getVariable('PGSQL_BASE_DIR').getValue() 
-    datadir = runtimeContext.getVariable('PGSQL_DATA_DIR').getValue()
+def callControlCommand(cmd, basedir, datadir, runasuser):
     command = os.path.join(basedir, "bin")
-    command = os.path.join(command, 'pg_ctl')
+    command = os.path.join(command, "pg_ctl")
     command = command + ' -D ' + datadir + ' ' + cmd 
-    return callAsUser(command)
+    return callAsUser(command, runasuser)
     
     
-def callAsUser(command):
+def callAsUser(command, runasuser):
     logInfo('Executing command: ' + command)
-    return call(['su','-c',command,'postgres'])
+    return call(['su','-c',command,runasuser])
     logInfo('Command finished')
     
+# writes the message in the engine log
+def logInfo(msg):
+  logger.info(msg)
+
     
 
